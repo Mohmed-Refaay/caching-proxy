@@ -16,11 +16,13 @@ const server = http.createServer(async (req, res) => {
     let data;
     let contentType;
     let statusCode;
+    let cacheHeader = "MISS";
     if (method === "GET" && path in cachedData) {
-      console.log("From Cache!");
       data = cachedData[path].data;
       contentType = cachedData[path].contentType;
       statusCode = cachedData[path].statusCode;
+
+      cacheHeader = "HIT";
     } else {
       const result = await fetch(`${TARGET_HOST}${path}`, {
         method,
@@ -45,6 +47,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     res.setHeader("Content-Type", contentType);
+    res.setHeader("X-Cache", cacheHeader);
     res.statusCode = statusCode;
     res.end(data);
   });
