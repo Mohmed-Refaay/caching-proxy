@@ -17,12 +17,11 @@ const server = http.createServer(async (req, res) => {
     let contentType;
     let statusCode;
     if (method === "GET" && path in cachedData) {
-      console.log("Found!");
+      console.log("From Cache!");
       data = cachedData[path].data;
       contentType = cachedData[path].contentType;
       statusCode = cachedData[path].statusCode;
     } else {
-      console.log("Not Found!");
       const result = await fetch(`${TARGET_HOST}${path}`, {
         method,
       });
@@ -38,6 +37,10 @@ const server = http.createServer(async (req, res) => {
           contentType,
           statusCode,
         };
+
+        setTimeout(() => {
+          delete cachedData[path];
+        }, 5000);
       }
     }
 
