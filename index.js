@@ -3,6 +3,7 @@ import http from "node:http";
 import morgan from "morgan";
 
 const TARGET_HOST = "https://dummyjson.com";
+const TTL = 5000;
 
 const logger = morgan("dev");
 
@@ -17,12 +18,20 @@ const server = http.createServer(async (req, res) => {
     let contentType;
     let statusCode;
     let cacheHeader = "MISS";
-    if (method === "GET" && path in cachedData) {
-      data = cachedData[path].data;
-      contentType = cachedData[path].contentType;
-      statusCode = cachedData[path].statusCode;
 
+    if (method === "GET" && path in cachedData) {
+      const cache = cachedData[path];
+      data = cache.data;
+      contentType = cache.contentType;
+      statusCode = cache.statusCode;
       cacheHeader = "HIT";
+
+      // keep the data for more TTL time;
+      clearTimeout(cache.timeoutId);
+      const timeoutId = setTimeout(() => {
+        delete cachedData[path];
+      }, TTL);
+      cache.timeoutId = timeoutId;
     } else {
       const result = await fetch(`${TARGET_HOST}${path}`, {
         method,
@@ -34,15 +43,16 @@ const server = http.createServer(async (req, res) => {
         result.headers.get("Content-Type") ?? "application/json";
       statusCode = result.status;
       if (result.ok) {
+        const timeoutId = setTimeout(() => {
+          delete cachedData[path];
+        }, TTL);
+
         cachedData[path] = {
           data,
           contentType,
           statusCode,
+          timeoutId,
         };
-
-        setTimeout(() => {
-          delete cachedData[path];
-        }, 5000);
       }
     }
 
