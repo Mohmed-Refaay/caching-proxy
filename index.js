@@ -1,6 +1,7 @@
 import fetch from "node-fetch";
 import http from "node:http";
 import morgan from "morgan";
+import { Mutex } from "async-mutex";
 
 const TARGET_HOST = "https://dummyjson.com";
 const TTL = 5000;
@@ -8,6 +9,8 @@ const TTL = 5000;
 const logger = morgan("dev");
 
 const cachedData = {};
+
+const processingRequests = new Map();
 
 const server = http.createServer(async (req, res) => {
   logger(req, res, async (err) => {
@@ -18,6 +21,10 @@ const server = http.createServer(async (req, res) => {
     let contentType;
     let statusCode;
     let cacheHeader = "MISS";
+
+    if (processingRequests.has(path)) {
+      await processingRequests.get(path).waitForUnlock();
+    }
 
     if (method === "GET" && path in cachedData) {
       const cache = cachedData[path];
@@ -33,6 +40,12 @@ const server = http.createServer(async (req, res) => {
       }, TTL);
       cache.timeoutId = timeoutId;
     } else {
+      let release;
+      if (method === "GET") {
+        const mutex = new Mutex();
+        processingRequests.set(path, mutex);
+        release = await mutex.acquire();
+      }
       const result = await fetch(`${TARGET_HOST}${path}`, {
         method,
       });
@@ -42,7 +55,7 @@ const server = http.createServer(async (req, res) => {
       contentType =
         result.headers.get("Content-Type") ?? "application/json";
       statusCode = result.status;
-      if (result.ok) {
+      if (result.ok && method === "GET") {
         const timeoutId = setTimeout(() => {
           delete cachedData[path];
         }, TTL);
@@ -53,6 +66,8 @@ const server = http.createServer(async (req, res) => {
           statusCode,
           timeoutId,
         };
+        processingRequests.delete(path);
+        release();
       }
     }
 
